@@ -22,7 +22,7 @@ export interface ExtensionMessage {
 	images?: string[]
 	ollamaModels?: string[]
 	filePaths?: string[]
-	partialMessage?: ClineMessage
+	partialMessage?: CodeaMessage
 	openRouterModels?: Record<string, ModelInfo>
 }
 
@@ -32,22 +32,22 @@ export interface ExtensionState {
 	customInstructions?: string
 	alwaysAllowReadOnly?: boolean
 	uriScheme?: string
-	clineMessages: ClineMessage[]
+	codeaMessages: CodeaMessage[]
 	taskHistory: HistoryItem[]
 	shouldShowAnnouncement: boolean
 }
 
-export interface ClineMessage {
+export interface CodeaMessage {
 	ts: number
 	type: "ask" | "say"
-	ask?: ClineAsk
-	say?: ClineSay
+	ask?: CodeaAsk
+	say?: CodeaSay
 	text?: string
 	images?: string[]
 	partial?: boolean
 }
 
-export type ClineAsk =
+export type CodeaAsk =
 	| "followup"
 	| "command"
 	| "command_output"
@@ -58,7 +58,7 @@ export type ClineAsk =
 	| "resume_completed_task"
 	| "mistake_limit_reached"
 
-export type ClineSay =
+export type CodeaSay =
 	| "task"
 	| "error"
 	| "api_req_started"
@@ -73,7 +73,7 @@ export type ClineSay =
 	| "shell_integration_warning"
 	| "inspect_site_result"
 
-export interface ClineSayTool {
+export interface CodeaSayTool {
 	tool:
 		| "editedExistingFile"
 		| "newFileCreated"
@@ -90,15 +90,15 @@ export interface ClineSayTool {
 	filePattern?: string
 }
 
-export interface ClineApiReqInfo {
+export interface CodeaApiReqInfo {
 	request?: string
 	tokensIn?: number
 	tokensOut?: number
 	cacheWrites?: number
 	cacheReads?: number
 	cost?: number
-	cancelReason?: ClineApiReqCancelReason
+	cancelReason?: CodeaApiReqCancelReason
 	streamingFailedMessage?: string
 }
 
-export type ClineApiReqCancelReason = "streaming_failed" | "user_cancelled"
+export type CodeaApiReqCancelReason = "streaming_failed" | "user_cancelled"

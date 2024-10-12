@@ -23,10 +23,10 @@ export interface WebviewMessage {
 		| "cancelTask"
 		| "refreshOpenRouterModels"
 	text?: string
-	askResponse?: ClineAskResponse
+	askResponse?: CodeaAskResponse
 	apiConfiguration?: ApiConfiguration
 	images?: string[]
 	bool?: boolean
 }
 
-export type ClineAskResponse = "yesButtonClicked" | "noButtonClicked" | "messageResponse"
+export type CodeaAskResponse = "yesButtonClicked" | "noButtonClicked" | "messageResponse"

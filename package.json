@@ -1,8 +1,8 @@
 {
-  "name": "claude-dev",
-  "displayName": "Cline (prev. Claude Dev)",
+  "name": "codea",
+  "displayName": "Codea",
   "description": "Autonomous coding agent right in your IDE, capable of creating/editing files, executing commands, and more with your permission every step of the way.",
-  "version": "2.0.6",
+  "version": "2.1.0",
   "icon": "assets/icons/icon.png",
   "galleryBanner": {
     "color": "#556C80",
@@ -12,15 +12,15 @@
     "vscode": "^1.84.0"
   },
   "author": {
-    "name": "Cline Bot Inc."
+    "name": "Codea Bot Inc."
   },
   "license": "Apache-2.0",
-  "publisher": "saoudrizwan",
+  "publisher": "codeadevai",
   "repository": {
     "type": "git",
-    "url": "https://github.com/cline/cline"
+    "url": "https://github.com/codea/codea"
   },
-  "homepage": "https://cline.bot",
+  "homepage": "https://codea.bot",
   "categories": [
     "AI",
     "Chat",
@@ -30,7 +30,7 @@
     "Testing"
   ],
   "keywords": [
-    "cline",
+    "codea",
     "claude",
     "dev",
     "openrouter",
@@ -49,7 +49,7 @@
       "activitybar": [
         {
           "id": "claude-dev-ActivityBar",
-          "title": "Cline",
+          "title": "Codea",
           "icon": "$(robot)"
         }
       ]
@@ -65,50 +65,50 @@
     },
     "commands": [
       {
-        "command": "cline.plusButtonClicked",
+        "command": "codea.plusButtonClicked",
         "title": "New Task",
         "icon": "$(add)"
       },
       {
-        "command": "cline.historyButtonClicked",
+        "command": "codea.historyButtonClicked",
         "title": "History",
         "icon": "$(history)"
       },
       {
-        "command": "cline.popoutButtonClicked",
+        "command": "codea.popoutButtonClicked",
         "title": "Open in Editor",
         "icon": "$(link-external)"
       },
       {
-        "command": "cline.settingsButtonClicked",
+        "command": "codea.settingsButtonClicked",
         "title": "Settings",
         "icon": "$(settings-gear)"
       },
       {
-        "command": "cline.openInNewTab",
+        "command": "codea.openInNewTab",
         "title": "Open In New Tab",
-        "category": "Cline"
+        "category": "Codea"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "cline.plusButtonClicked",
+          "command": "codea.plusButtonClicked",
           "group": "navigation@1",
           "when": "view == claude-dev.SidebarProvider"
         },
         {
-          "command": "cline.historyButtonClicked",
+          "command": "codea.historyButtonClicked",
           "group": "navigation@2",
           "when": "view == claude-dev.SidebarProvider"
         },
         {
-          "command": "cline.popoutButtonClicked",
+          "command": "codea.popoutButtonClicked",
           "group": "navigation@3",
           "when": "view == claude-dev.SidebarProvider"
         },
         {
-          "command": "cline.settingsButtonClicked",
+          "command": "codea.settingsButtonClicked",
           "group": "navigation@4",
           "when": "view == claude-dev.SidebarProvider"
         }

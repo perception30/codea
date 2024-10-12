@@ -1,46 +1,46 @@
-# Cline API
+# Codea API
 
-The Cline extension exposes an API that can be used by other extensions. To use this API in your extension:
+The Codea extension exposes an API that can be used by other extensions. To use this API in your extension:
 
-1. Copy `src/extension-api/cline.d.ts` to your extension's source directory.
-2. Include `cline.d.ts` in your extension's compilation.
+1. Copy `src/extension-api/codea.d.ts` to your extension's source directory.
+2. Include `codea.d.ts` in your extension's compilation.
 3. Get access to the API with the following code:
 
     ```ts
-    const clineExtension = vscode.extensions.getExtension<ClineAPI>("saoudrizwan.claude-dev")
+    const codeaExtension = vscode.extensions.getExtension<CodeaAPI>("saoudrizwan.claude-dev")
 
-    if (!clineExtension?.isActive) {
-    	throw new Error("Cline extension is not activated")
+    if (!codeaExtension?.isActive) {
+    	throw new Error("Codea extension is not activated")
     }
 
-    const cline = clineExtension.exports
+    const codea = codeaExtension.exports
 
-    if (cline) {
+    if (codea) {
     	// Now you can use the API
 
     	// Set custom instructions
-    	await cline.setCustomInstructions("Talk like a pirate")
+    	await codea.setCustomInstructions("Talk like a pirate")
 
     	// Get custom instructions
-    	const instructions = await cline.getCustomInstructions()
+    	const instructions = await codea.getCustomInstructions()
     	console.log("Current custom instructions:", instructions)
 
     	// Start a new task with an initial message
-    	await cline.startNewTask("Hello, Cline! Let's make a new project...")
+    	await codea.startNewTask("Hello, Codea! Let's make a new project...")
 
     	// Start a new task with an initial message and images
-    	await cline.startNewTask("Use this design language", ["data:image/webp;base64,..."])
+    	await codea.startNewTask("Use this design language", ["data:image/webp;base64,..."])
 
     	// Send a message to the current task
-    	await cline.sendMessage("Can you fix the @problems?")
+    	await codea.sendMessage("Can you fix the @problems?")
 
     	// Simulate pressing the primary button in the chat interface (e.g. 'Save' or 'Proceed While Running')
-    	await cline.pressPrimaryButton()
+    	await codea.pressPrimaryButton()
 
     	// Simulate pressing the secondary button in the chat interface (e.g. 'Reject')
-    	await cline.pressSecondaryButton()
+    	await codea.pressSecondaryButton()
     } else {
-    	console.error("Cline API is not available")
+    	console.error("Codea API is not available")
     }
     ```
 
@@ -52,4 +52,4 @@ The Cline extension exposes an API that can be used by other extensions. To use 
     ]
     ```
 
-For detailed information on the available methods and their usage, refer to the `cline.d.ts` file.
+For detailed information on the available methods and their usage, refer to the `codea.d.ts` file.

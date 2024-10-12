@@ -1,9 +1,9 @@
 import * as vscode from "vscode"
-import { ClineProvider } from "../core/webview/ClineProvider"
-import { ClineAPI } from "./cline"
+import { CodeaProvider } from "../core/webview/CodeaProvider"
+import { CodeaAPI } from "./codea"
 
-export function createClineAPI(outputChannel: vscode.OutputChannel, sidebarProvider: ClineProvider): ClineAPI {
-	const api: ClineAPI = {
+export function createCodeaAPI(outputChannel: vscode.OutputChannel, sidebarProvider: CodeaProvider): CodeaAPI {
+	const api: CodeaAPI = {
 		setCustomInstructions: async (value: string) => {
 			await sidebarProvider.updateCustomInstructions(value)
 			outputChannel.appendLine("Custom instructions set")

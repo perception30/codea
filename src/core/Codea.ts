@@ -22,16 +22,16 @@ import { findLastIndex } from "../shared/array"
 import { combineApiRequests } from "../shared/combineApiRequests"
 import { combineCommandSequences } from "../shared/combineCommandSequences"
 import {
-	ClineApiReqCancelReason,
-	ClineApiReqInfo,
-	ClineAsk,
-	ClineMessage,
-	ClineSay,
-	ClineSayTool,
+	CodeaApiReqCancelReason,
+	CodeaApiReqInfo,
+	CodeaAsk,
+	CodeaMessage,
+	CodeaSay,
+	CodeaSayTool,
 } from "../shared/ExtensionMessage"
 import { getApiMetrics } from "../shared/getApiMetrics"
 import { HistoryItem } from "../shared/HistoryItem"
-import { ClineAskResponse } from "../shared/WebviewMessage"
+import { CodeaAskResponse } from "../shared/WebviewMessage"
 import { calculateApiCost } from "../utils/cost"
 import { fileExistsAtPath } from "../utils/fs"
 import { arePathsEqual, getReadablePath } from "../utils/path"
@@ -40,7 +40,7 @@ import { AssistantMessageContent, parseAssistantMessage, ToolParamName, ToolUseN
 import { formatResponse } from "./prompts/responses"
 import { addCustomInstructions, SYSTEM_PROMPT } from "./prompts/system"
 import { truncateHalfConversation } from "./sliding-window"
-import { ClineProvider, GlobalFileNames } from "./webview/ClineProvider"
+import { CodeaProvider, GlobalFileNames } from "./webview/CodeaProvider"
 
 const cwd =
 	vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath).at(0) ?? path.join(os.homedir(), "Desktop") // may or may not exist but fs checking existence would immediately ask for permission which would be bad UX, need to come up with a better solution
@@ -50,7 +50,7 @@ type UserContent = Array<
 	Anthropic.TextBlockParam | Anthropic.ImageBlockParam | Anthropic.ToolUseBlockParam | Anthropic.ToolResultBlockParam
 >
 
-export class Cline {
+export class Codea {
 	readonly taskId: string
 	api: ApiHandler
 	private terminalManager: TerminalManager
@@ -59,13 +59,13 @@ export class Cline {
 	customInstructions?: string
 	alwaysAllowReadOnly: boolean
 	apiConversationHistory: Anthropic.MessageParam[] = []
-	clineMessages: ClineMessage[] = []
-	private askResponse?: ClineAskResponse
+	codeaMessages: CodeaMessage[] = []
+	private askResponse?: CodeaAskResponse
 	private askResponseText?: string
 	private askResponseImages?: string[]
 	private lastMessageTs?: number
 	private consecutiveMistakeCount: number = 0
-	private providerRef: WeakRef<ClineProvider>
+	private providerRef: WeakRef<CodeaProvider>
 	private abort: boolean = false
 	didFinishAborting = false
 	private diffViewProvider: DiffViewProvider
@@ -81,7 +81,7 @@ export class Cline {
 	private didCompleteReadingStream = false
 
 	constructor(
-		provider: ClineProvider,
+		provider: CodeaProvider,
 		apiConfiguration: ApiConfiguration,
 		customInstructions?: string,
 		alwaysAllowReadOnly?: boolean,
@@ -149,7 +149,7 @@ export class Cline {
 		}
 	}
 
-	private async getSavedClineMessages(): Promise<ClineMessage[]> {
+	private async getSavedCodeaMessages(): Promise<CodeaMessage[]> {
 		const filePath = path.join(await this.ensureTaskDirectoryExists(), GlobalFileNames.uiMessages)
 		if (await fileExistsAtPath(filePath)) {
 			return JSON.parse(await fs.readFile(filePath, "utf8"))
@@ -165,27 +165,27 @@ export class Cline {
 		return []
 	}
 
-	private async addToClineMessages(message: ClineMessage) {
-		this.clineMessages.push(message)
-		await this.saveClineMessages()
+	private async addToCodeaMessages(message: CodeaMessage) {
+		this.codeaMessages.push(message)
+		await this.saveCodeaMessages()
 	}
 
-	private async overwriteClineMessages(newMessages: ClineMessage[]) {
-		this.clineMessages = newMessages
-		await this.saveClineMessages()
+	private async overwriteCodeaMessages(newMessages: CodeaMessage[]) {
+		this.codeaMessages = newMessages
+		await this.saveCodeaMessages()
 	}
 
-	private async saveClineMessages() {
+	private async saveCodeaMessages() {
 		try {
 			const filePath = path.join(await this.ensureTaskDirectoryExists(), GlobalFileNames.uiMessages)
-			await fs.writeFile(filePath, JSON.stringify(this.clineMessages))
+			await fs.writeFile(filePath, JSON.stringify(this.codeaMessages))
 			// combined as they are in ChatView
-			const apiMetrics = getApiMetrics(combineApiRequests(combineCommandSequences(this.clineMessages.slice(1))))
-			const taskMessage = this.clineMessages[0] // first message is always the task say
+			const apiMetrics = getApiMetrics(combineApiRequests(combineCommandSequences(this.codeaMessages.slice(1))))
+			const taskMessage = this.codeaMessages[0] // first message is always the task say
 			const lastRelevantMessage =
-				this.clineMessages[
+				this.codeaMessages[
 					findLastIndex(
-						this.clineMessages,
+						this.codeaMessages,
 						(m) => !(m.ask === "resume_task" || m.ask === "resume_completed_task")
 					)
 				]
@@ -200,7 +200,7 @@ export class Cline {
 				totalCost: apiMetrics.totalCost,
 			})
 		} catch (error) {
-			console.error("Failed to save cline messages:", error)
+			console.error("Failed to save codea messages:", error)
 		}
 	}
 
@@ -208,17 +208,17 @@ export class Cline {
 
 	// partial has three valid states true (partial message), false (completion of partial message), undefined (individual complete message)
 	async ask(
-		type: ClineAsk,
+		type: CodeaAsk,
 		text?: string,
 		partial?: boolean
-	): Promise<{ response: ClineAskResponse; text?: string; images?: string[] }> {
-		// If this Cline instance was aborted by the provider, then the only thing keeping us alive is a promise still running in the background, in which case we don't want to send its result to the webview as it is attached to a new instance of Cline now. So we can safely ignore the result of any active promises, and this class will be deallocated. (Although we set Cline = undefined in provider, that simply removes the reference to this instance, but the instance is still alive until this promise resolves or rejects.)
+	): Promise<{ response: CodeaAskResponse; text?: string; images?: string[] }> {
+		// If this Codea instance was aborted by the provider, then the only thing keeping us alive is a promise still running in the background, in which case we don't want to send its result to the webview as it is attached to a new instance of Codea now. So we can safely ignore the result of any active promises, and this class will be deallocated. (Although we set Codea = undefined in provider, that simply removes the reference to this instance, but the instance is still alive until this promise resolves or rejects.)
 		if (this.abort) {
-			throw new Error("Cline instance aborted")
+			throw new Error("Codea instance aborted")
 		}
 		let askTs: number
 		if (partial !== undefined) {
-			const lastMessage = this.clineMessages.at(-1)
+			const lastMessage = this.codeaMessages.at(-1)
 			const isUpdatingPreviousPartial =
 				lastMessage && lastMessage.partial && lastMessage.type === "ask" && lastMessage.ask === type
 			if (partial) {
@@ -227,7 +227,7 @@ export class Cline {
 					lastMessage.text = text
 					lastMessage.partial = partial
 					// todo be more efficient about saving and posting only new data or one whole message at a time so ignore partial for saves, and only post parts of partial message instead of whole array in new listener
-					// await this.saveClineMessages()
+					// await this.saveCodeaMessages()
 					// await this.providerRef.deref()?.postStateToWebview()
 					await this.providerRef
 						.deref()
@@ -240,7 +240,7 @@ export class Cline {
 					// this.askResponseImages = undefined
 					askTs = Date.now()
 					this.lastMessageTs = askTs
-					await this.addToClineMessages({ ts: askTs, type: "ask", ask: type, text, partial })
+					await this.addToCodeaMessages({ ts: askTs, type: "ask", ask: type, text, partial })
 					await this.providerRef.deref()?.postStateToWebview()
 					throw new Error("Current ask promise was ignored 2")
 				}
@@ -263,7 +263,7 @@ export class Cline {
 					// lastMessage.ts = askTs
 					lastMessage.text = text
 					lastMessage.partial = false
-					await this.saveClineMessages()
+					await this.saveCodeaMessages()
 					// await this.providerRef.deref()?.postStateToWebview()
 					await this.providerRef
 						.deref()
@@ -275,19 +275,19 @@ export class Cline {
 					this.askResponseImages = undefined
 					askTs = Date.now()
 					this.lastMessageTs = askTs
-					await this.addToClineMessages({ ts: askTs, type: "ask", ask: type, text })
+					await this.addToCodeaMessages({ ts: askTs, type: "ask", ask: type, text })
 					await this.providerRef.deref()?.postStateToWebview()
 				}
 			}
 		} else {
 			// this is a new non-partial message, so add it like normal
-			// const lastMessage = this.clineMessages.at(-1)
+			// const lastMessage = this.codeaMessages.at(-1)
 			this.askResponse = undefined
 			this.askResponseText = undefined
 			this.askResponseImages = undefined
 			askTs = Date.now()
 			this.lastMessageTs = askTs
-			await this.addToClineMessages({ ts: askTs, type: "ask", ask: type, text })
+			await this.addToCodeaMessages({ ts: askTs, type: "ask", ask: type, text })
 			await this.providerRef.deref()?.postStateToWebview()
 		}
 
@@ -302,19 +302,19 @@ export class Cline {
 		return result
 	}
 
-	async handleWebviewAskResponse(askResponse: ClineAskResponse, text?: string, images?: string[]) {
+	async handleWebviewAskResponse(askResponse: CodeaAskResponse, text?: string, images?: string[]) {
 		this.askResponse = askResponse
 		this.askResponseText = text
 		this.askResponseImages = images
 	}
 
-	async say(type: ClineSay, text?: string, images?: string[], partial?: boolean): Promise<undefined> {
+	async say(type: CodeaSay, text?: string, images?: string[], partial?: boolean): Promise<undefined> {
 		if (this.abort) {
-			throw new Error("Cline instance aborted")
+			throw new Error("Codea instance aborted")
 		}
 
 		if (partial !== undefined) {
-			const lastMessage = this.clineMessages.at(-1)
+			const lastMessage = this.codeaMessages.at(-1)
 			const isUpdatingPreviousPartial =
 				lastMessage && lastMessage.partial && lastMessage.type === "say" && lastMessage.say === type
 			if (partial) {
@@ -330,7 +330,7 @@ export class Cline {
 					// this is a new partial message, so add it with partial state
 					const sayTs = Date.now()
 					this.lastMessageTs = sayTs
-					await this.addToClineMessages({ ts: sayTs, type: "say", say: type, text, images, partial })
+					await this.addToCodeaMessages({ ts: sayTs, type: "say", say: type, text, images, partial })
 					await this.providerRef.deref()?.postStateToWebview()
 				}
 			} else {
@@ -344,7 +344,7 @@ export class Cline {
 					lastMessage.partial = false
 
 					// instead of streaming partialMessage events, we do a save and post like normal to persist to disk
-					await this.saveClineMessages()
+					await this.saveCodeaMessages()
 					// await this.providerRef.deref()?.postStateToWebview()
 					await this.providerRef
 						.deref()
@@ -353,7 +353,7 @@ export class Cline {
 					// this is a new partial=false message, so add it like normal
 					const sayTs = Date.now()
 					this.lastMessageTs = sayTs
-					await this.addToClineMessages({ ts: sayTs, type: "say", say: type, text, images })
+					await this.addToCodeaMessages({ ts: sayTs, type: "say", say: type, text, images })
 					await this.providerRef.deref()?.postStateToWebview()
 				}
 			}
@@ -361,7 +361,7 @@ export class Cline {
 			// this is a new non-partial message, so add it like normal
 			const sayTs = Date.now()
 			this.lastMessageTs = sayTs
-			await this.addToClineMessages({ ts: sayTs, type: "say", say: type, text, images })
+			await this.addToCodeaMessages({ ts: sayTs, type: "say", say: type, text, images })
 			await this.providerRef.deref()?.postStateToWebview()
 		}
 	}
@@ -369,7 +369,7 @@ export class Cline {
 	async sayAndCreateMissingParamError(toolName: ToolUseName, paramName: string, relPath?: string) {
 		await this.say(
 			"error",
-			`Cline tried to use ${toolName}${
+			`Codea tried to use ${toolName}${
 				relPath ? ` for '${relPath.toPosix()}'` : ""
 			} without value for required parameter '${paramName}'. Retrying...`
 		)
@@ -379,9 +379,9 @@ export class Cline {
 	// Task lifecycle
 
 	private async startTask(task?: string, images?: string[]): Promise<void> {
-		// conversationHistory (for API) and clineMessages (for webview) need to be in sync
-		// if the extension process were killed, then on restart the clineMessages might not be empty, so we need to set it to [] when we create a new Cline client (otherwise webview would show stale messages from previous session)
-		this.clineMessages = []
+		// conversationHistory (for API) and codeaMessages (for webview) need to be in sync
+		// if the extension process were killed, then on restart the codeaMessages might not be empty, so we need to set it to [] when we create a new Codea client (otherwise webview would show stale messages from previous session)
+		this.codeaMessages = []
 		this.apiConversationHistory = []
 		await this.providerRef.deref()?.postStateToWebview()
 
@@ -398,52 +398,52 @@ export class Cline {
 	}
 
 	private async resumeTaskFromHistory() {
-		const modifiedClineMessages = await this.getSavedClineMessages()
+		const modifiedCodeaMessages = await this.getSavedCodeaMessages()
 
 		// Remove any resume messages that may have been added before
 		const lastRelevantMessageIndex = findLastIndex(
-			modifiedClineMessages,
+			modifiedCodeaMessages,
 			(m) => !(m.ask === "resume_task" || m.ask === "resume_completed_task")
 		)
 		if (lastRelevantMessageIndex !== -1) {
-			modifiedClineMessages.splice(lastRelevantMessageIndex + 1)
+			modifiedCodeaMessages.splice(lastRelevantMessageIndex + 1)
 		}
 
 		// since we don't use api_req_finished anymore, we need to check if the last api_req_started has a cost value, if it doesn't and no cancellation reason to present, then we remove it since it indicates an api request without any partial content streamed
 		const lastApiReqStartedIndex = findLastIndex(
-			modifiedClineMessages,
+			modifiedCodeaMessages,
 			(m) => m.type === "say" && m.say === "api_req_started"
 		)
 		if (lastApiReqStartedIndex !== -1) {
-			const lastApiReqStarted = modifiedClineMessages[lastApiReqStartedIndex]
-			const { cost, cancelReason }: ClineApiReqInfo = JSON.parse(lastApiReqStarted.text || "{}")
+			const lastApiReqStarted = modifiedCodeaMessages[lastApiReqStartedIndex]
+			const { cost, cancelReason }: CodeaApiReqInfo = JSON.parse(lastApiReqStarted.text || "{}")
 			if (cost === undefined && cancelReason === undefined) {
-				modifiedClineMessages.splice(lastApiReqStartedIndex, 1)
+				modifiedCodeaMessages.splice(lastApiReqStartedIndex, 1)
 			}
 		}
 
-		await this.overwriteClineMessages(modifiedClineMessages)
-		this.clineMessages = await this.getSavedClineMessages()
+		await this.overwriteCodeaMessages(modifiedCodeaMessages)
+		this.codeaMessages = await this.getSavedCodeaMessages()
 
-		// Now present the cline messages to the user and ask if they want to resume
+		// Now present the codea messages to the user and ask if they want to resume
 
-		const lastClineMessage = this.clineMessages
+		const lastCodeaMessage = this.codeaMessages
 			.slice()
 			.reverse()
 			.find((m) => !(m.ask === "resume_task" || m.ask === "resume_completed_task")) // could be multiple resume tasks
-		// const lastClineMessage = this.clineMessages[lastClineMessageIndex]
+		// const lastCodeaMessage = this.codeaMessages[lastCodeaMessageIndex]
 		// could be a completion result with a command
-		// const secondLastClineMessage = this.clineMessages
+		// const secondLastCodeaMessage = this.codeaMessages
 		// 	.slice()
 		// 	.reverse()
 		// 	.find(
 		// 		(m, index) =>
-		// 			index !== lastClineMessageIndex && !(m.ask === "resume_task" || m.ask === "resume_completed_task")
+		// 			index !== lastCodeaMessageIndex && !(m.ask === "resume_task" || m.ask === "resume_completed_task")
 		// 	)
-		// (lastClineMessage?.ask === "command" && secondLastClineMessage?.ask === "completion_result")
+		// (lastCodeaMessage?.ask === "command" && secondLastCodeaMessage?.ask === "completion_result")
 
-		let askType: ClineAsk
-		if (lastClineMessage?.ask === "completion_result") {
+		let askType: CodeaAsk
+		if (lastCodeaMessage?.ask === "completion_result") {
 			askType = "resume_completed_task"
 		} else {
 			askType = "resume_task"
@@ -458,7 +458,7 @@ export class Cline {
 			responseImages = images
 		}
 
-		// need to make sure that the api conversation history can be resumed by the api, even if it goes out of sync with cline messages
+		// need to make sure that the api conversation history can be resumed by the api, even if it goes out of sync with codea messages
 
 		let existingApiConversationHistory: Anthropic.Messages.MessageParam[] =
 			await this.getSavedApiConversationHistory()
@@ -581,7 +581,7 @@ export class Cline {
 		let newUserContent: UserContent = [...modifiedOldUserContent]
 
 		const agoText = (() => {
-			const timestamp = lastClineMessage?.ts ?? Date.now()
+			const timestamp = lastCodeaMessage?.ts ?? Date.now()
 			const now = Date.now()
 			const diff = now - timestamp
 			const minutes = Math.floor(diff / 60000)
@@ -600,7 +600,7 @@ export class Cline {
 			return "just now"
 		})()
 
-		const wasRecent = lastClineMessage?.ts && Date.now() - lastClineMessage.ts < 30_000
+		const wasRecent = lastCodeaMessage?.ts && Date.now() - lastCodeaMessage.ts < 30_000
 
 		newUserContent.push({
 			type: "text",
@@ -627,11 +627,11 @@ export class Cline {
 		let nextUserContent = userContent
 		let includeFileDetails = true
 		while (!this.abort) {
-			const didEndLoop = await this.recursivelyMakeClineRequests(nextUserContent, includeFileDetails)
+			const didEndLoop = await this.recursivelyMakeCodeaRequests(nextUserContent, includeFileDetails)
 			includeFileDetails = false // we only need file details the first time
 
-			//  The way this agentic loop works is that cline will be given a task that he then calls tools to complete. unless there's an attempt_completion call, we keep responding back to him with his tool's responses until he either attempt_completion or does not use anymore tools. If he does not use anymore tools, we ask him to consider if he's completed the task and then call attempt_completion, otherwise proceed with completing the task.
-			// There is a MAX_REQUESTS_PER_TASK limit to prevent infinite requests, but Cline is prompted to finish the task as efficiently as he can.
+			//  The way this agentic loop works is that codea will be given a task that he then calls tools to complete. unless there's an attempt_completion call, we keep responding back to him with his tool's responses until he either attempt_completion or does not use anymore tools. If he does not use anymore tools, we ask him to consider if he's completed the task and then call attempt_completion, otherwise proceed with completing the task.
+			// There is a MAX_REQUESTS_PER_TASK limit to prevent infinite requests, but Codea is prompted to finish the task as efficiently as he can.
 
 			//const totalCost = this.calculateApiCost(totalInputTokens, totalOutputTokens)
 			if (didEndLoop) {
@@ -641,7 +641,7 @@ export class Cline {
 			} else {
 				// this.say(
 				// 	"tool",
-				// 	"Cline responded with only text blocks but has not called attempt_completion yet. Forcing him to continue with task..."
+				// 	"Codea responded with only text blocks but has not called attempt_completion yet. Forcing him to continue with task..."
 				// )
 				nextUserContent = [
 					{
@@ -748,9 +748,9 @@ export class Cline {
 
 		// If the previous API request's total token usage is close to the context window, truncate the conversation history to free up space for the new request
 		if (previousApiReqIndex >= 0) {
-			const previousRequest = this.clineMessages[previousApiReqIndex]
+			const previousRequest = this.codeaMessages[previousApiReqIndex]
 			if (previousRequest && previousRequest.text) {
-				const { tokensIn, tokensOut, cacheWrites, cacheReads }: ClineApiReqInfo = JSON.parse(
+				const { tokensIn, tokensOut, cacheWrites, cacheReads }: CodeaApiReqInfo = JSON.parse(
 					previousRequest.text
 				)
 				const totalTokens = (tokensIn || 0) + (tokensOut || 0) + (cacheWrites || 0) + (cacheReads || 0)
@@ -794,7 +794,7 @@ export class Cline {
 
 	async presentAssistantMessage() {
 		if (this.abort) {
-			throw new Error("Cline instance aborted")
+			throw new Error("Codea instance aborted")
 		}
 
 		if (this.presentAssistantMessageLocked) {
@@ -920,7 +920,7 @@ export class Cline {
 					}
 				}
 
-				const askApproval = async (type: ClineAsk, partialMessage?: string) => {
+				const askApproval = async (type: CodeaAsk, partialMessage?: string) => {
 					const { response, text, images } = await this.ask(type, partialMessage, false)
 					if (response !== "yesButtonClicked") {
 						if (response === "messageResponse") {
@@ -1030,7 +1030,7 @@ export class Cline {
 								.replace(/&quot;/g, '"')
 						}
 
-						const sharedMessageProps: ClineSayTool = {
+						const sharedMessageProps: CodeaSayTool = {
 							tool: fileExists ? "editedExistingFile" : "newFileCreated",
 							path: getReadablePath(cwd, removeClosingTag("path", relPath)),
 						}
@@ -1085,7 +1085,7 @@ export class Cline {
 												newContent
 										  )
 										: undefined,
-								} satisfies ClineSayTool)
+								} satisfies CodeaSayTool)
 								const didApprove = await askApproval("tool", completeMessage)
 								if (!didApprove) {
 									await this.diffViewProvider.revertChanges()
@@ -1100,7 +1100,7 @@ export class Cline {
 											tool: fileExists ? "editedExistingFile" : "newFileCreated",
 											path: getReadablePath(cwd, relPath),
 											diff: userEdits,
-										} satisfies ClineSayTool)
+										} satisfies CodeaSayTool)
 									)
 									pushToolResult(
 										`The user made the following updates to your content:\n\n${userEdits}\n\nThe updated content, which includes both your original modifications and the user's additional edits, has been successfully saved to ${relPath.toPosix()}. (Note this does not mean you need to re-write the file with the user's changes, as they have already been applied to the file.)${newProblemsMessage}`
@@ -1121,7 +1121,7 @@ export class Cline {
 					}
 					case "read_file": {
 						const relPath: string | undefined = block.params.path
-						const sharedMessageProps: ClineSayTool = {
+						const sharedMessageProps: CodeaSayTool = {
 							tool: "readFile",
 							path: getReadablePath(cwd, removeClosingTag("path", relPath)),
 						}
@@ -1130,7 +1130,7 @@ export class Cline {
 								const partialMessage = JSON.stringify({
 									...sharedMessageProps,
 									content: undefined,
-								} satisfies ClineSayTool)
+								} satisfies CodeaSayTool)
 								if (this.alwaysAllowReadOnly) {
 									await this.say("tool", partialMessage, undefined, block.partial)
 								} else {
@@ -1148,7 +1148,7 @@ export class Cline {
 								const completeMessage = JSON.stringify({
 									...sharedMessageProps,
 									content: absolutePath,
-								} satisfies ClineSayTool)
+								} satisfies CodeaSayTool)
 								if (this.alwaysAllowReadOnly) {
 									await this.say("tool", completeMessage, undefined, false) // need to be sending partialValue bool, since undefined has its own purpose in that the message is treated neither as a partial or completion of a partial, but as a single complete message
 								} else {
@@ -1171,7 +1171,7 @@ export class Cline {
 						const relDirPath: string | undefined = block.params.path
 						const recursiveRaw: string | undefined = block.params.recursive
 						const recursive = recursiveRaw?.toLowerCase() === "true"
-						const sharedMessageProps: ClineSayTool = {
+						const sharedMessageProps: CodeaSayTool = {
 							tool: !recursive ? "listFilesTopLevel" : "listFilesRecursive",
 							path: getReadablePath(cwd, removeClosingTag("path", relDirPath)),
 						}
@@ -1180,7 +1180,7 @@ export class Cline {
 								const partialMessage = JSON.stringify({
 									...sharedMessageProps,
 									content: "",
-								} satisfies ClineSayTool)
+								} satisfies CodeaSayTool)
 								if (this.alwaysAllowReadOnly) {
 									await this.say("tool", partialMessage, undefined, block.partial)
 								} else {
@@ -1200,7 +1200,7 @@ export class Cline {
 								const completeMessage = JSON.stringify({
 									...sharedMessageProps,
 									content: result,
-								} satisfies ClineSayTool)
+								} satisfies CodeaSayTool)
 								if (this.alwaysAllowReadOnly) {
 									await this.say("tool", completeMessage, undefined, false)
 								} else {
@@ -1219,7 +1219,7 @@ export class Cline {
 					}
 					case "list_code_definition_names": {
 						const relDirPath: string | undefined = block.params.path
-						const sharedMessageProps: ClineSayTool = {
+						const sharedMessageProps: CodeaSayTool = {
 							tool: "listCodeDefinitionNames",
 							path: getReadablePath(cwd, removeClosingTag("path", relDirPath)),
 						}
@@ -1228,7 +1228,7 @@ export class Cline {
 								const partialMessage = JSON.stringify({
 									...sharedMessageProps,
 									content: "",
-								} satisfies ClineSayTool)
+								} satisfies CodeaSayTool)
 								if (this.alwaysAllowReadOnly) {
 									await this.say("tool", partialMessage, undefined, block.partial)
 								} else {
@@ -1249,7 +1249,7 @@ export class Cline {
 								const completeMessage = JSON.stringify({
 									...sharedMessageProps,
 									content: result,
-								} satisfies ClineSayTool)
+								} satisfies CodeaSayTool)
 								if (this.alwaysAllowReadOnly) {
 									await this.say("tool", completeMessage, undefined, false)
 								} else {
@@ -1270,7 +1270,7 @@ export class Cline {
 						const relDirPath: string | undefined = block.params.path
 						const regex: string | undefined = block.params.regex
 						const filePattern: string | undefined = block.params.file_pattern
-						const sharedMessageProps: ClineSayTool = {
+						const sharedMessageProps: CodeaSayTool = {
 							tool: "searchFiles",
 							path: getReadablePath(cwd, removeClosingTag("path", relDirPath)),
 							regex: removeClosingTag("regex", regex),
@@ -1281,7 +1281,7 @@ export class Cline {
 								const partialMessage = JSON.stringify({
 									...sharedMessageProps,
 									content: "",
-								} satisfies ClineSayTool)
+								} satisfies CodeaSayTool)
 								if (this.alwaysAllowReadOnly) {
 									await this.say("tool", partialMessage, undefined, block.partial)
 								} else {
@@ -1305,7 +1305,7 @@ export class Cline {
 								const completeMessage = JSON.stringify({
 									...sharedMessageProps,
 									content: results,
-								} satisfies ClineSayTool)
+								} satisfies CodeaSayTool)
 								if (this.alwaysAllowReadOnly) {
 									await this.say("tool", completeMessage, undefined, false)
 								} else {
@@ -1324,7 +1324,7 @@ export class Cline {
 					}
 					case "inspect_site": {
 						const url: string | undefined = block.params.url
-						const sharedMessageProps: ClineSayTool = {
+						const sharedMessageProps: CodeaSayTool = {
 							tool: "inspectSite",
 							path: removeClosingTag("url", url),
 						}
@@ -1452,7 +1452,7 @@ export class Cline {
 						let resultToSend = result
 						if (command) {
 							await this.say("completion_result", resultToSend)
-							// TODO: currently we don't handle if this command fails, it could be useful to let cline know and retry
+							// TODO: currently we don't handle if this command fails, it could be useful to let codea know and retry
 							const [didUserReject, commandResult] = await this.executeCommand(command, true)
 							// if we received non-empty string, the command was rejected or failed
 							if (commandResult) {
@@ -1470,13 +1470,13 @@ export class Cline {
 						const result: string | undefined = block.params.result
 						const command: string | undefined = block.params.command
 						try {
-							const lastMessage = this.clineMessages.at(-1)
+							const lastMessage = this.codeaMessages.at(-1)
 							if (block.partial) {
 								if (command) {
 									// the attempt_completion text is done, now we're getting command
 									// remove the previous partial attempt_completion ask, replace with say, post state to webview, then stream command
 
-									// const secondLastMessage = this.clineMessages.at(-2)
+									// const secondLastMessage = this.codeaMessages.at(-2)
 									if (lastMessage && lastMessage.ask === "command") {
 										// update command
 										await this.ask(
@@ -1612,12 +1612,12 @@ export class Cline {
 		}
 	}
 
-	async recursivelyMakeClineRequests(
+	async recursivelyMakeCodeaRequests(
 		userContent: UserContent,
 		includeFileDetails: boolean = false
 	): Promise<boolean> {
 		if (this.abort) {
-			throw new Error("Cline instance aborted")
+			throw new Error("Codea instance aborted")
 		}
 
 		if (this.consecutiveMistakeCount >= 3) {
@@ -1625,7 +1625,7 @@ export class Cline {
 				"mistake_limit_reached",
 				this.api.getModel().id.includes("claude")
 					? `This may indicate a failure in his thought process or inability to use a tool properly, which can be mitigated with some user guidance (e.g. "Try breaking down the task into smaller steps").`
-					: "Cline uses complex prompts and iterative task execution that may be challenging for less capable models. For best results, it's recommended to use Claude 3.5 Sonnet for its advanced agentic coding capabilities."
+					: "Codea uses complex prompts and iterative task execution that may be challenging for less capable models. For best results, it's recommended to use Claude 3.5 Sonnet for its advanced agentic coding capabilities."
 			)
 			if (response === "messageResponse") {
 				userContent.push(
@@ -1642,7 +1642,7 @@ export class Cline {
 		}
 
 		// get previous api req's index to check token usage and determine if we need to truncate conversation history
-		const previousApiReqIndex = findLastIndex(this.clineMessages, (m) => m.say === "api_req_started")
+		const previousApiReqIndex = findLastIndex(this.codeaMessages, (m) => m.say === "api_req_started")
 
 		// getting verbose details is an expensive operation, it uses globby to top-down build file structure of project which for large projects can take a few seconds
 		// for the best UX we show a placeholder api_req_started message with a loading spinner as this happens
@@ -1662,11 +1662,11 @@ export class Cline {
 		await this.addToApiConversationHistory({ role: "user", content: userContent })
 
 		// since we sent off a placeholder api_req_started message to update the webview while waiting to actually start the API request (to load potential details for example), we need to update the text of that message
-		const lastApiReqIndex = findLastIndex(this.clineMessages, (m) => m.say === "api_req_started")
-		this.clineMessages[lastApiReqIndex].text = JSON.stringify({
+		const lastApiReqIndex = findLastIndex(this.codeaMessages, (m) => m.say === "api_req_started")
+		this.codeaMessages[lastApiReqIndex].text = JSON.stringify({
 			request: userContent.map((block) => formatContentBlockToMarkdown(block)).join("\n\n"),
-		} satisfies ClineApiReqInfo)
-		await this.saveClineMessages()
+		} satisfies CodeaApiReqInfo)
+		await this.saveCodeaMessages()
 		await this.providerRef.deref()?.postStateToWebview()
 
 		try {
@@ -1679,9 +1679,9 @@ export class Cline {
 			// update api_req_started. we can't use api_req_finished anymore since it's a unique case where it could come after a streaming message (ie in the middle of being updated or executed)
 			// fortunately api_req_finished was always parsed out for the gui anyways, so it remains solely for legacy purposes to keep track of prices in tasks from history
 			// (it's worth removing a few months from now)
-			const updateApiReqMsg = (cancelReason?: ClineApiReqCancelReason, streamingFailedMessage?: string) => {
-				this.clineMessages[lastApiReqIndex].text = JSON.stringify({
-					...JSON.parse(this.clineMessages[lastApiReqIndex].text || "{}"),
+			const updateApiReqMsg = (cancelReason?: CodeaApiReqCancelReason, streamingFailedMessage?: string) => {
+				this.codeaMessages[lastApiReqIndex].text = JSON.stringify({
+					...JSON.parse(this.codeaMessages[lastApiReqIndex].text || "{}"),
 					tokensIn: inputTokens,
 					tokensOut: outputTokens,
 					cacheWrites: cacheWriteTokens,
@@ -1697,22 +1697,22 @@ export class Cline {
 						),
 					cancelReason,
 					streamingFailedMessage,
-				} satisfies ClineApiReqInfo)
+				} satisfies CodeaApiReqInfo)
 			}
 
-			const abortStream = async (cancelReason: ClineApiReqCancelReason, streamingFailedMessage?: string) => {
+			const abortStream = async (cancelReason: CodeaApiReqCancelReason, streamingFailedMessage?: string) => {
 				if (this.diffViewProvider.isEditing) {
 					await this.diffViewProvider.revertChanges() // closes diff view
 				}
 
 				// if last message is a partial we need to update and save it
-				const lastMessage = this.clineMessages.at(-1)
+				const lastMessage = this.codeaMessages.at(-1)
 				if (lastMessage && lastMessage.partial) {
 					// lastMessage.ts = Date.now() DO NOT update ts since it is used as a key for virtuoso list
 					lastMessage.partial = false
 					// instead of streaming partialMessage events, we do a save and post like normal to persist to disk
 					console.log("updating partial message", lastMessage)
-					// await this.saveClineMessages()
+					// await this.saveCodeaMessages()
 				}
 
 				// Let assistant know their response was interrupted for when task is resumed
@@ -1734,7 +1734,7 @@ export class Cline {
 
 				// update api_req_started to have cancelled and cost, so that we can display the cost of the partial stream
 				updateApiReqMsg(cancelReason, streamingFailedMessage)
-				await this.saveClineMessages()
+				await this.saveCodeaMessages()
 
 				// signals to provider that it can retrieve the saved messages from disk, as abortTask can not be awaited on in nature
 				this.didFinishAborting = true
@@ -1794,14 +1794,14 @@ export class Cline {
 				await abortStream("streaming_failed", error.message ?? JSON.stringify(serializeError(error), null, 2))
 				const history = await this.providerRef.deref()?.getTaskWithId(this.taskId)
 				if (history) {
-					await this.providerRef.deref()?.initClineWithHistoryItem(history.historyItem)
+					await this.providerRef.deref()?.initCodeaWithHistoryItem(history.historyItem)
 					// await this.providerRef.deref()?.postStateToWebview()
 				}
 			}
 
 			// need to call here in case the stream was aborted
 			if (this.abort) {
-				throw new Error("Cline instance aborted")
+				throw new Error("Codea instance aborted")
 			}
 
 			this.didCompleteReadingStream = true
@@ -1818,7 +1818,7 @@ export class Cline {
 			}
 
 			updateApiReqMsg()
-			await this.saveClineMessages()
+			await this.saveCodeaMessages()
 			await this.providerRef.deref()?.postStateToWebview()
 
 			// now add to apiconversationhistory
@@ -1850,7 +1850,7 @@ export class Cline {
 					this.consecutiveMistakeCount++
 				}
 
-				const recDidEndLoop = await this.recursivelyMakeClineRequests(this.userMessageContent)
+				const recDidEndLoop = await this.recursivelyMakeCodeaRequests(this.userMessageContent)
 				didEndLoop = recDidEndLoop
 			} else {
 				// if there's no assistant_responses, that means we got no text or tool_use content blocks from API which we should assume is an error
@@ -1920,7 +1920,7 @@ export class Cline {
 	async getEnvironmentDetails(includeFileDetails: boolean = false) {
 		let details = ""
 
-		// It could be useful for cline to know if the user went from one or no file to another between messages, so we always include this context
+		// It could be useful for codea to know if the user went from one or no file to another between messages, so we always include this context
 		details += "\n\n# VSCode Visible Files"
 		const visibleFiles = vscode.window.visibleTextEditors
 			?.map((editor) => editor.document?.uri?.fsPath)
@@ -1968,7 +1968,7 @@ export class Cline {
 		// we want to get diagnostics AFTER terminal cools down for a few reasons: terminal could be scaffolding a project, dev servers (compilers like webpack) will first re-compile and then send diagnostics, etc
 		/*
 		let diagnosticsDetails = ""
-		const diagnostics = await this.diagnosticsMonitor.getCurrentDiagnostics(this.didEditFile || terminalWasBusy) // if cline ran a command (ie npm install) or edited the workspace then wait a bit for updated diagnostics
+		const diagnostics = await this.diagnosticsMonitor.getCurrentDiagnostics(this.didEditFile || terminalWasBusy) // if codea ran a command (ie npm install) or edited the workspace then wait a bit for updated diagnostics
 		for (const [uri, fileDiagnostics] of diagnostics) {
 			const problems = fileDiagnostics.filter((d) => d.severity === vscode.DiagnosticSeverity.Error)
 			if (problems.length > 0) {
